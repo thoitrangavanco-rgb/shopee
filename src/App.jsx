@@ -9,6 +9,7 @@ import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
 // ----------------------------------------------------------------------------------
 // CẤU HÌNH FIREBASE CHO GITHUB (CHẠY ĐỘC LẬP)
 // BẠN HÃY COPY LẠI ĐOẠN CONFIG TỪ FIREBASE CỦA BẠN VÀ DÁN ĐÈ VÀO BIẾN BÊN DƯỚI NHÉ!
+// VÍ DỤ: const GITHUB_FIREBASE_CONFIG = { apiKey: "AIza...", authDomain: "..." };
 // ----------------------------------------------------------------------------------
 const firebaseConfig = {
   apiKey: "AIzaSyAhXrjCjqXz0M5vm-cs2_NozUihXam5tUI",
@@ -206,6 +207,12 @@ export default function App() {
 
   // --- CHỨC NĂNG ĐĂNG NHẬP GOOGLE & CLOUD SYNC ---
   const handleGoogleLogin = async () => {
+    // THÊM CHỐT CHẶN BẢO VỆ LỖI TẠI ĐÂY
+    if (!auth) {
+      setLoginError("Lỗi: Chưa có kết nối Firebase! Vui lòng thay 'null' bằng đoạn mã cấu hình Firebase của bạn ở dòng 14 trong code.");
+      return;
+    }
+
     try {
       setLoginError("");
       const result = await signInWithPopup(auth, provider);
@@ -785,7 +792,7 @@ export default function App() {
 
   // --- CÁC HÀM GỌI GEMINI API CHO TỪNG KHU VỰC ---
   const callGeminiAPI = async (prompt) => {
-    const apiKey = "AIzaSyCmcx8K3B6TN6oOoiMH-2R7Mh5h1Yu6eyc"; 
+    const apiKey = ""; 
     const payload = {
       contents: [{ parts: [{ text: prompt }] }],
       systemInstruction: { parts: [{ text: "Bạn là chuyên gia phân tích thương mại điện tử cấp cao. Dùng tiếng Việt. Luôn trả lời trọng tâm, không dài dòng. Định dạng bảng hoặc danh sách markdown thật đẹp." }] }
