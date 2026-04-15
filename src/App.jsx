@@ -3,7 +3,7 @@ import { Upload, AlertCircle, TrendingUp, Package, ShoppingBag, DollarSign, Cred
 
 // --- FIREBASE INTEGRATION ---
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
 
 // ----------------------------------------------------------------------------------
@@ -27,6 +27,8 @@ const app = initializeApp ( firebaseConfig );
 let app, auth, db, appId;
 try {
   const envConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : GITHUB_FIREBASE_CONFIG;
+  const provider = new GoogleAuthProvider();
+const ALLOWED_EMAILS = ["thoitrangvanco@gmail.com", "changkho1508@gmail.com"];
   if (envConfig) {
       app = initializeApp(envConfig);
       auth = getAuth(app);
@@ -210,14 +212,38 @@ export default function App() {
   }, [expandedSku]);
 
   // --- CHỨC NĂNG ĐĂNG NHẬP & CLOUD SYNC ---
-  const handleLogin = () => {
-    if (passwordInput === '686868') {
-      setIsAuthenticated(true);
-      setLoginError('');
-    } else {
-      setLoginError('Mật khẩu không chính xác!');
+  // Trạng thái lưu user hiện tại
+  const [authUser, setAuthUser] = useState(null);
+  const [loginError, setLoginError] = useState("");
+
+  // Hàm xử lý Đăng nhập Google
+  const handleGoogleLogin = async () => {
+    try {
+      setLoginError("");
+      const result = await signInWithPopup(auth, provider);
+      const userEmail = result.user.email;
+      
+      // Kiểm tra xem email có nằm trong danh sách VIP không
+      if (ALLOWED_EMAILS.includes(userEmail)) {
+        setAuthUser(result.user); // Cho phép vào
+        setIsAuthenticated(true);
+      } else {
+        // Nếu email lạ -> Đuổi ra ngay lập tức
+        await signOut(auth);
+        setLoginError(`Email ${userEmail} không có quyền truy cập hệ thống!`);
+      }
+    } catch (error) {
+      setLoginError("Lỗi đăng nhập: " + error.message);
     }
   };
+
+  // Hàm xử lý Đăng xuất
+  const handleLogout = async () => {
+    await signOut(auth);
+    setAuthUser(null);
+    setIsAuthenticated(false);
+  };
+  
 
   const handleSaveCloud = async () => {
     if (!db || !firebaseUser) {
@@ -226,7 +252,8 @@ export default function App() {
     }
     setIsSyncing(true); setError(''); setSuccessMsg('');
     try {
-        const docRef = doc(db, 'artifacts', appId, 'users', firebaseUser.uid, 'shopee_data', 'latest');
+      // Thay userEmail bằng authUser.email
+const docRef = doc(db, "users", authUser.email, "shopee_data", "analytics");
         await setDoc(docRef, {
             data: JSON.stringify(data),
             costMap: JSON.stringify(costMap),
@@ -251,7 +278,8 @@ export default function App() {
     }
     setIsSyncing(true); setError(''); setSuccessMsg('');
     try {
-        const docRef = doc(db, 'artifacts', appId, 'users', firebaseUser.uid, 'shopee_data', 'latest');
+      // Thay userEmail bằng authUser.email
+const docRef = doc(db, "users", authUser.email, "shopee_data", "analytics");
         const snap = await getDoc(docRef);
         if (snap.exists()) {
             const cData = snap.data();
@@ -960,7 +988,37 @@ export default function App() {
                 <p className="text-sm text-slate-500 mb-6 text-center leading-relaxed">Hệ thống phân tích Shopee Analytics nội bộ được mã hóa. Vui lòng nhập mật khẩu truy cập.</p>
                 <input 
                     type="password" 
-                    value={passwordInput} 
+                    value={if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-xl shadow-lg max-w-md w-full text-center">
+          <Lock className="w-12 h-12 text-blue-600 mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">Shopee Analytics</h1>
+          <p className="text-gray-500 mb-6">Đăng nhập bằng tài khoản nội bộ để tiếp tục</p>
+          
+          <button 
+            onClick={handleGoogleLogin}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+          >
+            <svg className="w-5 h-5 bg-white rounded-full p-0.5" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+            </svg>
+            Đăng nhập bằng Google
+          </button>
+
+          {loginError && (
+            <div className="mt-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm">
+              {loginError}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+} 
                     onChange={e => { setPasswordInput(e.target.value); setLoginError(''); }} 
                     onKeyDown={e => e.key === 'Enter' && handleLogin()}
                     className={`w-full px-4 py-3 rounded-xl border ${loginError ? 'border-red-400 bg-red-50' : 'border-slate-200 bg-slate-50'} focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 outline-none transition-all text-center text-lg tracking-[0.5em] mb-2 font-bold text-slate-800`}
