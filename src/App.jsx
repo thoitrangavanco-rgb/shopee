@@ -12,13 +12,14 @@ import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
 // VD: { apiKey: "AIza...", authDomain: "...", projectId: "..." }
 // ----------------------------------------------------------------------------------
 // Cấu hình Firebase của ứng dụng web của bạn
-const firebaseConfig = { 
-  apiKey : "AIzaSyAhXrjCjqXz0M5vm-cs2_NozUihXam5tUI" , 
-  authDomain : "shopee-analytics-db.firebaseapp.com" , 
-  projectId : "shopee-analytics-db" , 
-  storageBucket : "shopee-analytics-db.firebasestorage.app" , 
-  messagingSenderId : "631013395938" , 
-  appId : "1:631013395938:web:3891993cc39c78378dfdbb" 
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyAhXrjCjqXz0M5vm-cs2_NozUihXam5tUI",
+  authDomain: "shopee-analytics-db.firebaseapp.com",
+  projectId: "shopee-analytics-db",
+  storageBucket: "shopee-analytics-db.firebasestorage.app",
+  messagingSenderId: "631013395938",
+  appId: "1:631013395938:web:3891993cc39c78378dfdbb"
 };
 
 // Khởi tạo Firebase
