@@ -19,6 +19,9 @@ const firebaseConfig = {
   appId: "1:631013395938:web:3891993cc39c78378dfdbb"
 };
 
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+
 // CẤU HÌNH ĐĂNG NHẬP GOOGLE
 const provider = new GoogleAuthProvider();
 const ALLOWED_EMAILS = ["thoitrangavanco@gmail.com", "changkho1508@gmail.com"];
