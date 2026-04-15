@@ -17,7 +17,8 @@ const firebaseConfig = {
   messagingSenderId: "631013395938",
   appId: "1:631013395938:web:3891993cc39c78378dfdbb"
 };
-
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
 
 // CẤU HÌNH ĐĂNG NHẬP GOOGLE
 const provider = new GoogleAuthProvider();
