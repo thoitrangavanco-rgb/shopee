@@ -15,7 +15,7 @@ const firebaseConfig = {
   projectId: "shopee-analytics-db",
   storageBucket: "shopee-analytics-db.firebasestorage.app",
   messagingSenderId: "631013395938",
-  appId: "1:631013395938:web:3891993cc39c78378dfdbb"
+  appId: "1:631013395938:web:5b9ee982c6348e178dfdbb"
 };
 
 
