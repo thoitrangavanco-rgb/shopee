@@ -3,16 +3,13 @@ import { Upload, AlertCircle, TrendingUp, Package, ShoppingBag, DollarSign, Cred
 
 // --- FIREBASE INTEGRATION ---
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
 
 // ----------------------------------------------------------------------------------
 // CẤU HÌNH FIREBASE CHO GITHUB (CHẠY ĐỘC LẬP)
-// Nếu bạn host trên GitHub Pages, hãy thay thế object null bằng cấu hình Firebase của bạn.
-// VD: { apiKey: "AIza...", authDomain: "...", projectId: "..." }
+// BẠN HÃY COPY LẠI ĐOẠN CONFIG TỪ FIREBASE CỦA BẠN VÀ DÁN ĐÈ VÀO BIẾN BÊN DƯỚI NHÉ!
 // ----------------------------------------------------------------------------------
-// Cấu hình Firebase của ứng dụng web của bạn
-// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyAhXrjCjqXz0M5vm-cs2_NozUihXam5tUI",
   authDomain: "shopee-analytics-db.firebaseapp.com",
@@ -22,8 +19,10 @@ const firebaseConfig = {
   appId: "1:631013395938:web:3891993cc39c78378dfdbb"
 };
 
-// Khởi tạo Firebase
-const app = initializeApp ( firebaseConfig );
+// CẤU HÌNH ĐĂNG NHẬP GOOGLE
+const provider = new GoogleAuthProvider();
+const ALLOWED_EMAILS = ["thoitrangavanco@gmail.com", "changkho1508@gmail.com"];
+
 let app, auth, db, appId;
 try {
   const envConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : GITHUB_FIREBASE_CONFIG;
@@ -112,9 +111,8 @@ const PlotlyChart = ({ data, layout, config, style, onRender }) => {
 export default function App() {
   // --- BẢO MẬT & ĐÁM MÂY STATES ---
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [passwordInput, setPasswordInput] = useState('');
+  const [authUser, setAuthUser] = useState(null);
   const [loginError, setLoginError] = useState('');
-  const [firebaseUser, setFirebaseUser] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
   // --- APP STATES ---
@@ -161,19 +159,16 @@ export default function App() {
   // --- FIREBASE INITIALIZATION ---
   useEffect(() => {
     if (!auth) return;
-    const initAuth = async () => {
-        try {
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                await signInWithCustomToken(auth, __initial_auth_token);
-            } else {
-                await signInAnonymously(auth);
-            }
-        } catch (error) {
-            console.error("Firebase Auth error", error);
-        }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setFirebaseUser);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      // Tự động cho phép vào nếu đã đăng nhập và thuộc danh sách email VIP
+      if (user && user.email && ALLOWED_EMAILS.includes(user.email)) {
+        setAuthUser(user);
+        setIsAuthenticated(true);
+      } else {
+        setAuthUser(null);
+        setIsAuthenticated(false);
+      }
+    });
     return () => unsubscribe();
   }, []);
 
@@ -209,24 +204,41 @@ export default function App() {
     setActiveSkuTab('finance');
   }, [expandedSku]);
 
-  // --- CHỨC NĂNG ĐĂNG NHẬP & CLOUD SYNC ---
-  const handleLogin = () => {
-    if (passwordInput === '686868') {
-      setIsAuthenticated(true);
-      setLoginError('');
-    } else {
-      setLoginError('Mật khẩu không chính xác!');
+  // --- CHỨC NĂNG ĐĂNG NHẬP GOOGLE & CLOUD SYNC ---
+  const handleGoogleLogin = async () => {
+    try {
+      setLoginError("");
+      const result = await signInWithPopup(auth, provider);
+      const userEmail = result.user.email;
+      
+      // Kiểm tra xem email có nằm trong danh sách VIP không
+      if (ALLOWED_EMAILS.includes(userEmail)) {
+        setAuthUser(result.user); // Cho phép vào
+        setIsAuthenticated(true);
+      } else {
+        // Nếu email lạ -> Đuổi ra ngay lập tức
+        await signOut(auth);
+        setLoginError(`Tài khoản ${userEmail} không có quyền truy cập hệ thống!`);
+      }
+    } catch (error) {
+      setLoginError("Lỗi đăng nhập: " + error.message);
     }
   };
 
+  const handleLogout = async () => {
+    await signOut(auth);
+    setAuthUser(null);
+    setIsAuthenticated(false);
+  };
+
   const handleSaveCloud = async () => {
-    if (!db || !firebaseUser) {
-        setError('Chưa kết nối được Firebase. Vui lòng kiểm tra cấu hình.');
+    if (!db || !authUser) {
+        setError('Chưa kết nối được Firebase hoặc chưa đăng nhập.');
         return;
     }
     setIsSyncing(true); setError(''); setSuccessMsg('');
     try {
-        const docRef = doc(db, 'artifacts', appId, 'users', firebaseUser.uid, 'shopee_data', 'latest');
+        const docRef = doc(db, "users", authUser.email, "shopee_data", "analytics");
         await setDoc(docRef, {
             data: JSON.stringify(data),
             costMap: JSON.stringify(costMap),
@@ -235,7 +247,8 @@ export default function App() {
             adSpend,
             adList: JSON.stringify(adList),
             aiHistory: JSON.stringify(aiHistory),
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
+            userEmail: authUser.email
         });
         setSuccessMsg('Đã đồng bộ toàn bộ dữ liệu & lịch sử lên Đám mây thành công!');
     } catch (err) {
@@ -245,13 +258,13 @@ export default function App() {
   };
 
   const handleLoadCloud = async () => {
-    if (!db || !firebaseUser) {
-        setError('Chưa kết nối được Firebase.');
+    if (!db || !authUser) {
+        setError('Chưa kết nối được Firebase hoặc chưa đăng nhập.');
         return;
     }
     setIsSyncing(true); setError(''); setSuccessMsg('');
     try {
-        const docRef = doc(db, 'artifacts', appId, 'users', firebaseUser.uid, 'shopee_data', 'latest');
+        const docRef = doc(db, "users", authUser.email, "shopee_data", "analytics");
         const snap = await getDoc(docRef);
         if (snap.exists()) {
             const cData = snap.data();
@@ -264,7 +277,7 @@ export default function App() {
             if(cData.aiHistory) setAiHistory(JSON.parse(cData.aiHistory));
             setSuccessMsg(`Đã tải dữ liệu từ Đám mây! Bản lưu cuối: ${new Date(cData.updatedAt).toLocaleString('vi-VN')}`);
         } else {
-            setError('Không tìm thấy bản lưu nào trên Đám mây.');
+            setError('Không tìm thấy bản lưu nào trên Đám mây cho tài khoản này.');
         }
     } catch (err) {
         setError('Lỗi tải mây: ' + err.message);
@@ -772,7 +785,7 @@ export default function App() {
 
   // --- CÁC HÀM GỌI GEMINI API CHO TỪNG KHU VỰC ---
   const callGeminiAPI = async (prompt) => {
-    const apiKey = ""; 
+    const apiKey = "AIzaSyCmcx8K3B6TN6oOoiMH-2R7Mh5h1Yu6eyc"; 
     const payload = {
       contents: [{ parts: [{ text: prompt }] }],
       systemInstruction: { parts: [{ text: "Bạn là chuyên gia phân tích thương mại điện tử cấp cao. Dùng tiếng Việt. Luôn trả lời trọng tâm, không dài dòng. Định dạng bảng hoặc danh sách markdown thật đẹp." }] }
@@ -948,33 +961,37 @@ export default function App() {
     return <div className="min-h-screen flex items-center justify-center bg-slate-50 font-sans text-slate-500"><Loader2 className="animate-spin mr-2" /> Đang tải công cụ trực quan hóa dữ liệu...</div>;
   }
 
-  // --- CỔNG ĐĂNG NHẬP ---
+  // --- CỔNG ĐĂNG NHẬP BẰNG GOOGLE ---
   if (!isAuthenticated) {
     return (
-        <div className="fixed inset-0 bg-gradient-to-br from-indigo-50 to-purple-100 flex items-center justify-center z-50 p-4 font-sans">
-            <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full flex flex-col items-center">
-                <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mb-6 shadow-inner">
-                    <Lock size={32} />
-                </div>
-                <h2 className="text-2xl font-black text-slate-800 mb-2 tracking-tight">Đăng Nhập Hệ Thống</h2>
-                <p className="text-sm text-slate-500 mb-6 text-center leading-relaxed">Hệ thống phân tích Shopee Analytics nội bộ được mã hóa. Vui lòng nhập mật khẩu truy cập.</p>
-                <input 
-                    type="password" 
-                    value={passwordInput} 
-                    onChange={e => { setPasswordInput(e.target.value); setLoginError(''); }} 
-                    onKeyDown={e => e.key === 'Enter' && handleLogin()}
-                    className={`w-full px-4 py-3 rounded-xl border ${loginError ? 'border-red-400 bg-red-50' : 'border-slate-200 bg-slate-50'} focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 outline-none transition-all text-center text-lg tracking-[0.5em] mb-2 font-bold text-slate-800`}
-                    placeholder="••••••"
-                />
-                {loginError && <p className="text-red-500 text-xs font-bold mb-4 animate-in slide-in-from-top-1">{loginError}</p>}
-                <button 
-                    onClick={handleLogin}
-                    className={`w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg shadow-indigo-600/30 transition-all ${loginError ? 'mt-0' : 'mt-4'}`}
-                >
-                    Truy Cập Dashboard
-                </button>
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-100 flex flex-col items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full text-center">
+          <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+              <Lock size={32} />
+          </div>
+          <h1 className="text-2xl font-black text-slate-800 mb-2">Shopee Analytics</h1>
+          <p className="text-sm text-slate-500 mb-8 leading-relaxed">Hệ thống phân tích cấp cao. Vui lòng đăng nhập bằng Email nội bộ được ủy quyền để tiếp tục.</p>
+          
+          <button 
+            onClick={handleGoogleLogin}
+            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold py-3 px-4 rounded-xl shadow-lg flex items-center justify-center gap-3 transition-all hover:-translate-y-1"
+          >
+            <svg className="w-6 h-6 bg-white rounded-full p-1" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+            </svg>
+            Đăng nhập bằng Google
+          </button>
+
+          {loginError && (
+            <div className="mt-6 p-3 bg-red-50 text-red-600 border border-red-200 rounded-xl text-sm font-medium animate-in slide-in-from-top-2">
+              {loginError}
             </div>
+          )}
         </div>
+      </div>
     );
   }
 
@@ -983,13 +1000,16 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 text-slate-800 p-4 md:p-8">
       <style dangerouslySetInnerHTML={{ __html: fontStyles }} />
 
-      {/* HEADER ZONE VỚI CLOUD SYNC */}
+      {/* HEADER ZONE VỚI CLOUD SYNC & LOGOUT */}
       <div className="max-w-7xl mx-auto flex flex-col xl:flex-row justify-between items-start xl:items-center mb-8 gap-6">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
             <BarChart2 className="text-blue-600" size={32} /> Shopee Analytics
           </h1>
-          <p className="text-slate-500 mt-1 text-sm font-medium">Bảng điều khiển Tài chính & AI Content thông minh</p>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <p className="text-slate-500 text-sm font-medium">Đang làm việc: <span className="text-indigo-600">{authUser?.email}</span></p>
+          </div>
         </div>
         
         <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
@@ -1016,13 +1036,16 @@ export default function App() {
 
           <div className="hidden md:block w-px h-8 bg-slate-300"></div>
 
-          {/* NÚT CLOUD SYNC */}
+          {/* NÚT CLOUD SYNC & LOGOUT */}
           <div className="flex flex-wrap gap-2">
              <button onClick={handleSaveCloud} disabled={isSyncing} className="flex items-center gap-2 bg-emerald-50 border border-emerald-300 text-emerald-700 hover:bg-emerald-100 px-4 py-2.5 rounded-xl shadow-sm font-bold transition-all hover:scale-[1.02] disabled:opacity-50">
                 {isSyncing ? <Loader2 size={16} className="animate-spin" /> : <CloudUpload size={16} />} Lưu Mây
              </button>
              <button onClick={handleLoadCloud} disabled={isSyncing} className="flex items-center gap-2 bg-blue-50 border border-blue-300 text-blue-700 hover:bg-blue-100 px-4 py-2.5 rounded-xl shadow-sm font-bold transition-all hover:scale-[1.02] disabled:opacity-50">
                 {isSyncing ? <Loader2 size={16} className="animate-spin" /> : <CloudDownload size={16} />} Tải Mây
+             </button>
+             <button onClick={handleLogout} className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 px-4 py-2.5 rounded-xl shadow-sm font-bold transition-all hover:scale-[1.02]">
+                Thoát
              </button>
           </div>
         </div>
